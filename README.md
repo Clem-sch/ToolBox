@@ -196,8 +196,3 @@ The hub prefers bundled local scripts over external scattered dependencies.
 If you update one of the original tools, copy the required changes into `bundled_tools/` as well.
 
 If you move the project folder, the run index and summary loading are designed to rebuild or normalize paths as needed.
-
-## License / Internal Use
-
-Add your preferred license here before publishing.
-If this project contains company-specific assets or workflows, review them before making the repository public.
