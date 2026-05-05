@@ -1,0 +1,219 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{fontspec}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{parskip}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+
+\setmainfont{Times New Roman}
+\geometry{margin=2.5cm}
+
+\IfFileExists{generated_values.tex}{%
+  \input{generated_values.tex}
+}{%
+  \newcommand{\Produktnummer}{}
+  \newcommand{\Zellname}{}
+  \newcommand{\MediumBeschreibung}{}
+  \newcommand{\MediumSchluessel}{}
+  \newcommand{\Supplement}{}
+  \newcommand{\Growth}{}
+  \newcommand{\GrowthSchluessel}{}
+  \newcommand{\Incubation}{}
+  \newcommand{\Subculturing}{}
+  \newcommand{\MediumTextFile}{}
+  \newcommand{\MediumCellCountTextFile}{}
+  \newcommand{\GrowthTextFile}{}
+  \newcommand{\GrowthCellCountTextFile}{}
+  \newcommand{\LogoFile}{}
+  \newcommand{\ImportBildFile}{}
+  \newcommanr{\Valid}{}
+}
+
+% Placeholder aliases so old-style commands can be referenced if needed.
+\newcommand{\csvProductNumber}{\Produktnummer}
+\newcommand{\csvName}{\Zellname}
+\newcommand{\csvMedium}{\MediumBeschreibung}
+\newcommand{\csvGrowth}{\Growth}
+\newcommand{\CSV}[1]{\textbf{[Placeholder command: #1]}}
+
+% Header / Footer option
+\newif\ifHeaderFooterEnabled
+\HeaderFooterEnabledtrue
+
+\pagestyle{fancy}
+\fancyhf{}
+\setlength{\headheight}{18pt}
+
+\newcommand{\MyHeaderLeft}{\textbf{SOP-\Produktnummer}}
+\newcommand{\MyHeaderCenter}{\ifHeaderFooterEnabled\textbf{\Zellname}\fi}
+\newcommand{\MyHeaderRight}{\ifHeaderFooterEnabled\textbf{Valid from: \\ \Valid}\fi}
+
+\newcommand{\MyFooterLeft}{Standard Operation\par Procedure}
+\newcommand{\MyFooterCenter}{\ifHeaderFooterEnabled Page \thepage\space of \pageref*{LastPage}\fi}
+\newcommand{\MyFooterRight}{%
+  \ifHeaderFooterEnabled
+    \ifx\LogoFile\empty
+    \else
+      \includegraphics[width=2.6cm]{\LogoFile}%
+    \fi
+  \fi
+}
+
+\fancyhead[L]{\MyHeaderLeft}
+\fancyhead[C]{\MyHeaderCenter}
+\fancyhead[R]{\MyHeaderRight}
+\fancyfoot[L]{\MyFooterLeft}
+\fancyfoot[C]{\MyFooterCenter}
+\fancyfoot[R]{\MyFooterRight}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyhead[L]{\MyHeaderLeft}
+  \fancyhead[C]{\MyHeaderCenter}
+  \fancyhead[R]{\MyHeaderRight}
+  \fancyfoot[L]{\MyFooterLeft}
+  \fancyfoot[C]{\MyFooterCenter}
+  \fancyfoot[R]{\MyFooterRight}
+  \renewcommand{\headrulewidth}{0.4pt}
+  \renewcommand{\footrulewidth}{0.4pt}
+}
+
+\newcommand{\HeaderFooterOn}{\global\HeaderFooterEnabledtrue}
+\newcommand{\HeaderFooterOff}{\global\HeaderFooterEnabledfalse}
+\newcommand{\SetHeaderLeft}[1]{\renewcommand{\MyHeaderLeft}{#1}}
+\newcommand{\SetHeaderCenter}[1]{\renewcommand{\MyHeaderCenter}{#1}}
+\newcommand{\SetHeaderRight}[1]{\renewcommand{\MyHeaderRight}{#1}}
+\newcommand{\SetFooterLeft}[1]{\renewcommand{\MyFooterLeft}{#1}}
+\newcommand{\SetFooterCenter}[1]{\renewcommand{\MyFooterCenter}{#1}}
+\newcommand{\SetFooterRight}[1]{\renewcommand{\MyFooterRight}{#1}}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+
+    \vspace*{2cm}
+
+    {\LARGE \textbf{\Zellname\space Cells}}\\[1.5cm]
+
+    {\Large Standard Operating Procedure (SOP)}\\[2cm]
+
+    \ifx\LogoFile\empty
+    \else
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.45\linewidth]{\LogoFile}
+    \end{figure}
+    \fi
+
+    \vspace{2cm}
+
+    \Large{Product Number: \Produktnummer}\\[1cm]
+    \Large\textbf{SOP-\Produktnummer}\\[1cm]
+    \small\today
+
+    \vfill
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Objective / Purpose}
+\IfFileExists{textblocks/section_objective.tex}{\input{textblocks/section_objective.tex}}{Objective placeholder text.}
+
+\section{Scope}
+\IfFileExists{textblocks/section_scope.tex}{\input{textblocks/section_scope.tex}}{Scope placeholder text.}
+
+\section{Basic principles}
+\IfFileExists{textblocks/section_basic_principles.tex}{\input{textblocks/section_basic_principles.tex}}{Basic principles placeholder text.}
+
+\subsection{\Zellname\space Characteristics}
+\IfFileExists{textblocks/section_characteristics_intro.tex}{\input{textblocks/section_characteristics_intro.tex}}{}
+\ifx\GrowthTextFile\empty
+\else
+  \input{\GrowthTextFile}
+\fi
+
+\subsection{Growth medium for \Zellname\space cells}
+\ifx\MediumTextFile\empty
+\else
+  \input{\MediumTextFile}
+\fi
+
+\subsection{Cell count and Viability}
+\ifx\MediumCellCountTextFile\empty
+\else
+  \input{\MediumCellCountTextFile}
+\fi
+\ifx\GrowthCellCountTextFile\empty
+\else
+  \input{\GrowthCellCountTextFile}
+\fi
+
+\subsection{Storage and Transport of \Zellname\space cells}
+\IfFileExists{textblocks/section_storage_transport.tex}{\input{textblocks/section_storage_transport.tex}}{Storage and transport placeholder text.}
+
+\subsection{Acceptance Criteria during Cell Expansion}
+\IfFileExists{textblocks/table_acceptance_criteria.tex}{\input{textblocks/table_acceptance_criteria.tex}}{Acceptance criteria placeholder text.}
+
+\IfFileExists{textblocks/figure_morphology.tex}{\input{textblocks/figure_morphology.tex}}{}
+
+\newpage
+\subsection{Materials and Equipment}
+\IfFileExists{textblocks/table_materials_equipment.tex}{\input{textblocks/table_materials_equipment.tex}}{Materials and equipment placeholder text.}
+
+\section{Procedure}
+\subsection{Preparation}
+\IfFileExists{textblocks/section_preparation.tex}{\input{textblocks/section_preparation.tex}}{Preparation placeholder text.}
+
+\subsection{Thawing of \Zellname\space cells}
+\IfFileExists{textblocks/section_thawing.tex}{\input{textblocks/section_thawing.tex}}{Thawing placeholder text.}
+
+\subsection{First subculture step}
+\IfFileExists{textblocks/section_first_subculture.tex}{\input{textblocks/section_first_subculture.tex}}{First subculture step placeholder text.}
+
+\subsection{Subculture routine of \Zellname\space cells}
+\IfFileExists{textblocks/section_subculture_routine.tex}{\input{textblocks/section_subculture_routine.tex}}{Subculture routine placeholder text.}
+
+\section{Freezing of \Zellname\space cells}
+\IfFileExists{textblocks/section_freezing.tex}{\input{textblocks/section_freezing.tex}}{Freezing placeholder text.}
+
+\section{Quality Control}
+\subsection{Authentication and Virus Testing}
+\IfFileExists{textblocks/section_authentication_testing.tex}{\input{textblocks/section_authentication_testing.tex}}{Authentication and testing placeholder text.}
+
+\subsection{Collecting a cell pellet}
+\IfFileExists{textblocks/section_collecting_pellet.tex}{\input{textblocks/section_collecting_pellet.tex}}{Collecting pellet placeholder text.}
+
+\subsection{Enter results}
+\IfFileExists{textblocks/section_enter_results.tex}{\input{textblocks/section_enter_results.tex}}{Enter results placeholder text.}
+
+\section{Documentation, batch release and ERP Entry}
+\IfFileExists{textblocks/section_documentation_erp.tex}{\input{textblocks/section_documentation_erp.tex}}{Documentation and ERP placeholder text.}
+
+\newpage
+\section{References}
+\IfFileExists{textblocks/section_references.tex}{\input{textblocks/section_references.tex}}{}
+
+\ifx\ImportBildFile\empty
+\else
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.6\textwidth]{\ImportBildFile}
+  \caption{Placeholder image: \Zellname}
+\end{figure}
+\fi
+
+\end{document}
