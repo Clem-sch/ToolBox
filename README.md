@@ -62,7 +62,7 @@ Optional, depending on the tools you use:
 ### 1. Clone the repository
 
 ```powershell
-git clone <YOUR_REPO_URL>
+git clone
 cd CellSearchHub
 ```
 
