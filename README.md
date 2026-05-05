@@ -1,176 +1,203 @@
 # CellSearch Tool Hub
 
-Dieser Ordner buendelt deine bestehenden Tools in einem gemeinsamen `tkinter`-Hub und in einer kleinen CLI.
+A modular desktop and CLI toolbox for cell line lookup, enrichment, CSV utilities, folder generation, and SOP preparation.
 
-## Struktur
+The project bundles several local tools into a single `tkinter` application and keeps generated data in a central `outputs/` directory.
 
-`app.py`
-Startet die GUI fuer Suche, Auswahl und Pipeline.
+## Features
 
-`cli.py`
-Headless Variante fuer `search`, `run` und `afs`.
+- Cellosaurus search workflow with `list`-first selection
+- Pipeline execution for `cello+`, PubMed, descriptions/PDFs, price lookup, and optional AFS export
+- Run archive with indexed output history
+- Embedded CSV comparison tool
+- AFS conversion utilities
+- Folder generation from text input
+- Embedded SOP builder with CSV import and PDF workflow
+- CLI entry points for scripted usage
 
-`hub/`
-Die eigentliche Logik fuer Cellosaurus, PubMed, Descriptions/PDFs, Price Search und Run-Verwaltung.
+## Project Structure
 
-`bundled_tools/`
-Lokale Kopien der benoetigten Projektskripte, damit der Hub nicht ausserhalb von `CellSearchHub` auf verstreute Dateien zeigen muss.
-
-Neu dazu:
-
-- `bundled_tools/csv_check/compare_csv_ui.py`
-- `bundled_tools/generated_folders/ordner_erstellen.py`
-
-`scripts/start_tool_hub.ps1`
-Startet die GUI ueber den gefundenen Python-Interpreter.
-
-`scripts/run_pipeline.ps1`
-Startet die Pipeline direkt aus PowerShell, wenn CVCL und Name schon feststehen.
-
-`outputs/runs/`
-Ein Ordner pro Run mit sauber getrennten Teilschritten.
-
-`outputs/cello_plus/`
-Fortlaufende `cello+` Sammeldateien.
-
-`outputs/afs/`
-Ablage fuer AFS-Konvertierungen und die fortlaufende AFS Master-Liste.
-
-`outputs/run_index.json`
-Universeller Index ueber alle Runs. Er wird aus den `summary.json` Dateien gebaut.
-
-## Run-Aufbau
-
-Jeder Pipeline-Run legt einen Ordner an wie:
-
-`outputs/runs/20260505_153000_CVCL_0030_HeLa/`
-
-Darin liegen standardmaessig:
-
-`01_cello_plus/`
-`cello_plus.csv` plus JSON mit dem Datensatz aus `cello+`
-
-`02_pubmed/`
-`pubmed_counts.csv` plus JSON
-
-`03_descriptions/`
-PDF-Downloads, `runs.jsonl` und Logdateien aus `descriptions2.py`
-
-`04_prices/`
-`price_results.csv` plus JSON
-
-`05_afs/`
-`afs_output.csv` und `afs_output.xlsx` im AFS-Schema
-
-`06_summary/`
-`selection.json` und `summary.json`
-
-`logs/`
-`pipeline.log`
-
-## Sammeldateien
-
-Parallel zu den Run-Ordnern pflegt der Hub fortlaufende Master-Dateien:
-
-`outputs/cello_plus/cello_plus_master_rows.csv`
-Eine Zeile pro Suche.
-
-`outputs/cello_plus/cello_plus_master_columns.csv`
-Eine neue Spalte pro Suche. Das ist die Uebersicht, wenn du Suchlaeufe nebeneinander vergleichen willst.
-
-`outputs/afs/afs_master_list.csv`
-Die fortlaufende AFS Liste im AFS-Schema.
-
-## Anzeige im Tool
-
-Im Hub selbst gibt es jetzt zusaetzlich zu `Live Log` drei Output-Ansichten:
-
-`Cello+ Output`
-Zeigt den letzten `cello+` Datensatz direkt im Tool.
-
-`AFS Liste`
-Zeigt die letzten Eintraege aus der fortlaufenden AFS Master-Datei.
-
-`Datei-Uebersicht`
-Zeigt die aktuellen Master-Dateien, die letzte neue Suchspalte und den Step-Status des letzten Runs.
-
-Zusatzlich gibt es einen eigenen Tab `Outputs`:
-
-- links den Run-Index aus `outputs/run_index.json`
-- rechts die geladenen Dateien und Outputs eines ausgewaehlten Runs
-
-## Starten
-
-GUI:
-
-```powershell
-.\CellSearchHub\scripts\start_tool_hub.ps1
+```text
+CellSearchHub/
+|-- app.py
+|-- cli.py
+|-- hub/
+|-- bundled_tools/
+|-- outputs/
+|-- scripts/
+|-- .gitignore
+|-- PUBLISHING_BLACKLIST.md
+|-- README.md
 ```
 
-## Haupttabs
+Important folders:
 
-`Workflow`
-Cellosaurus, Pipeline und Live-Outputs.
+- `hub/`
+  Core UI, pipeline, path handling, and adapters.
 
-`Outputs`
-Run-Archiv und Detailansicht pro Run.
+- `bundled_tools/`
+  Local copies of the underlying tools used by the hub.
 
-`CSV`
-AFS-Konvertierung und Start des eigenstaendigen `csv_check`-Tools.
+- `outputs/`
+  Central storage for runs, logs, and generated master files.
 
-`Generate Folders`
-Textbasiertes Erzeugen der bekannten Ordnerstruktur ohne Zwischenablage.
+- `scripts/`
+  PowerShell wrappers for launching the GUI or running the pipeline headlessly.
 
-`SOP`
-Vorbereiteter Platzhalter fuer die separate SOP-UI.
+## Requirements
 
-CLI Suche:
+Recommended environment:
 
-```powershell
-python .\CellSearchHub\cli.py search "HeLa"
-```
+- Windows
+- Python 3.11+ or 3.12
+- A working `tkinter` installation
 
-CLI Pipeline:
+Optional, depending on the tools you use:
 
-```powershell
-python .\CellSearchHub\cli.py run --search-query "HeLa" --cvcl CVCL_0030 --name "HeLa"
-```
+- `lualatex` for SOP PDF generation
+- internet access for Cellosaurus, PubMed, price lookup, and description downloads
 
-Oder als PowerShell-Wrapper:
+## Getting Started
 
-```powershell
-.\CellSearchHub\scripts\run_pipeline.ps1 -SearchQuery "HeLa" -Cvcl CVCL_0030 -Name "HeLa"
-```
-
-## Wichtige Idee
-
-Der Hub zwingt den ersten Schritt nicht hart, aber er ist genau fuer deinen gewuenschten Ablauf gebaut:
-
-1. Erst `list` auf Cellosaurus.
-2. Dann den passenden Treffer auswaehlen.
-3. Danach `cello+` als Basis direkt in die Masterdateien schreiben.
-4. Anschliessend PubMed, Descriptions/PDFs und Preise parallel oder nacheinander starten.
-5. Optional nur bei aktiviertem Haken in die AFS-Ausgaben uebernehmen.
-
-## Hinweise
-
-`AFSconvTool/AFSconvtool.py` kann jetzt auch ohne GUI per CLI laufen:
+### 1. Clone the repository
 
 ```powershell
-python .\AFSconvTool\AFSconvtool.py --input .\deine_datei.csv --output .\afs_import_output.xlsx
+git clone <YOUR_REPO_URL>
+cd CellSearchHub
 ```
 
-`Celloscraper/cello+.py` unterstuetzt jetzt ebenfalls CLI-Aufrufe:
+### 2. Start the desktop app
 
 ```powershell
-python .\Celloscraper\cello+.py --list HeLa
-python .\Celloscraper\cello+.py CVCL_0030 --output .\ziel.csv
+python .\app.py
 ```
 
-## GitHub Hygiene
+Alternative PowerShell launcher:
 
-Fuer ein oeffentliches oder extern geteiltes Repository sollten lokale Outputs, Logs,
-Beispieldaten mit Unternehmensbezug und Branding-Assets nicht mit versioniert werden.
+```powershell
+.\scripts\start_tool_hub.ps1
+```
 
-Der Hub ist deshalb so aufgebaut, dass generierte Dateien zentral unter `outputs/`
-liegen und per `.gitignore` ausgeschlossen werden koennen.
+### 3. Typical workflow
+
+1. Search a cell line via Cellosaurus using the `list` workflow.
+2. Select the correct match.
+3. Run the pipeline.
+4. Review outputs in the `Workflow` and `Outputs` tabs.
+5. Optionally export AFS rows or continue with SOP preparation.
+
+## Main Tabs
+
+### `Workflow`
+
+Primary search and pipeline execution tab.
+
+Includes:
+
+- Cellosaurus search
+- pipeline options
+- live log
+- latest `cello+`, AFS, PubMed, and price outputs
+
+### `Outputs`
+
+Run archive and output browser.
+
+Includes:
+
+- run index built from `summary.json`
+- summary view
+- per-run `cello+`, AFS, PubMed, and prices output views
+- quick access to run folders and summary files
+
+### `CSV`
+
+CSV utility area.
+
+Includes:
+
+- AFS conversion
+- embedded universal CSV comparison tool
+
+### `Generate Folders`
+
+Creates folder structures from text input and writes them into the configured output base directory.
+
+### `SOP`
+
+Embedded SOP tool for CSV-driven document preparation and PDF generation.
+
+## CLI Usage
+
+### Search
+
+```powershell
+python .\cli.py search "HeLa"
+```
+
+### Run pipeline
+
+```powershell
+python .\cli.py run --search-query "HeLa" --cvcl CVCL_0030 --name "HeLa"
+```
+
+### PowerShell wrapper
+
+```powershell
+.\scripts\run_pipeline.ps1 -SearchQuery "HeLa" -Cvcl CVCL_0030 -Name "HeLa"
+```
+
+## Output Layout
+
+Generated files are stored centrally under `outputs/`.
+
+Typical run structure:
+
+```text
+outputs/runs/<timestamp>_<cvcl>_<name>/
+|-- 01_cello_plus/
+|-- 02_pubmed/
+|-- 03_descriptions/
+|-- 04_prices/
+|-- 05_afs/
+|-- 06_summary/
+`-- logs/
+```
+
+Important shared outputs:
+
+- `outputs/cello_plus/cello_plus_master_rows.csv`
+- `outputs/cello_plus/cello_plus_master_columns.csv`
+- `outputs/afs/afs_master_list.csv`
+- `outputs/run_index.json`
+
+## Notes on Data and Publishing
+
+This repository is designed so local data stays centralized under `outputs/`.
+That makes cleanup easier and reduces the risk of committing generated files.
+
+Before publishing or pushing to a public repository:
+
+- review `.gitignore`
+- review `PUBLISHING_BLACKLIST.md`
+- confirm that no local CSV, logs, PDFs, images, or run archives are staged
+
+Useful checks:
+
+```powershell
+git status --ignored
+git diff --cached
+git ls-files
+```
+
+## Development Notes
+
+The hub prefers bundled local scripts over external scattered dependencies.
+If you update one of the original tools, copy the required changes into `bundled_tools/` as well.
+
+If you move the project folder, the run index and summary loading are designed to rebuild or normalize paths as needed.
+
+## License / Internal Use
+
+Add your preferred license here before publishing.
+If this project contains company-specific assets or workflows, review them before making the repository public.
