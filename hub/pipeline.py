@@ -14,6 +14,7 @@ from .paths import RUN_INDEX_JSON, RUNS_ROOT, ensure_output_roots
 
 @dataclass
 class PipelineOptions:
+    run_cello: bool = True
     run_cello_store: bool = True
     run_pubmed: bool = True
     run_descriptions: bool = True
@@ -213,6 +214,16 @@ class ToolHubPipeline:
             "data": payload,
         }
 
+    def _skipped_step(self, reason: str | None = None):
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        return {
+            "status": "skipped",
+            "started_at": timestamp,
+            "finished_at": timestamp,
+            "error": reason,
+            "data": {},
+        }
+
     def run(
         self,
         search_query: str,
@@ -243,21 +254,28 @@ class ToolHubPipeline:
         }
 
         self.log(f"Run-Ordner: {paths.run_dir}")
-        summary["steps"]["cello_plus"] = self._run_step(
-            "cello+",
-            lambda: adapters.write_cello_result(
-                search_query=search_query,
-                selected_name=selected_name,
-                selected_cvcl=selected_cvcl,
-                record_file=paths.cello_dir / "cello_plus.json",
-                update_cello_master=options.run_cello_store,
-                afs_output_csv=(paths.afs_dir / "afs_output.csv") if options.run_afs else None,
-                afs_output_xlsx=(paths.afs_dir / "afs_output.xlsx") if options.run_afs else None,
-                update_afs=options.run_afs,
-            ),
-        )
-        if summary["steps"]["cello_plus"]["status"] == "ok":
-            summary["master_files"] = summary["steps"]["cello_plus"]["data"].get("aggregate_files", {})
+        needs_cello = options.run_cello or options.run_afs
+        if needs_cello:
+            if options.run_afs and not options.run_cello:
+                self.log("cello+: wird als Abhaengigkeit fuer AFS ausgefuehrt")
+
+            summary["steps"]["cello_plus"] = self._run_step(
+                "cello+",
+                lambda: adapters.write_cello_result(
+                    search_query=search_query,
+                    selected_name=selected_name,
+                    selected_cvcl=selected_cvcl,
+                    record_file=paths.cello_dir / "cello_plus.json",
+                    update_cello_master=options.run_cello and options.run_cello_store,
+                    afs_output_csv=(paths.afs_dir / "afs_output.csv") if options.run_afs else None,
+                    afs_output_xlsx=(paths.afs_dir / "afs_output.xlsx") if options.run_afs else None,
+                    update_afs=options.run_afs,
+                ),
+            )
+            if summary["steps"]["cello_plus"]["status"] == "ok":
+                summary["master_files"] = summary["steps"]["cello_plus"]["data"].get("aggregate_files", {})
+        else:
+            summary["steps"]["cello_plus"] = self._skipped_step("Nicht ausgewaehlt")
 
         step_factories = []
         if options.run_pubmed:
@@ -279,6 +297,14 @@ class ToolHubPipeline:
                 "prices",
                 lambda: adapters.run_price_search(selected_name=selected_name, output_dir=paths.prices_dir),
             ))
+
+        for label, enabled in (
+            ("pubmed", options.run_pubmed),
+            ("descriptions", options.run_descriptions),
+            ("prices", options.run_prices),
+        ):
+            if not enabled:
+                summary["steps"][label] = self._skipped_step("Nicht ausgewaehlt")
 
         if options.parallel and len(step_factories) > 1:
             with ThreadPoolExecutor(max_workers=len(step_factories)) as executor:

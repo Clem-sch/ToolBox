@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 import queue
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = None
+    ImageTk = None
 from tkinter.scrolledtext import ScrolledText
 
 from .adapters import (
@@ -46,12 +54,13 @@ class ToolHubApp:
         self.pipeline = ToolHubPipeline(logger=self.enqueue_log)
         self.last_run_dir: Path | None = None
         self.loaded_run_summary: dict[str, object] | None = None
-        self.window_icon_image: tk.PhotoImage | None = None
-        self.header_brand_image: tk.PhotoImage | None = None
+        self.window_icon_image: object | None = None
+        self.header_brand_image: object | None = None
 
         self.search_var = tk.StringVar()
         self.selected_cvcl_var = tk.StringVar()
         self.selected_name_var = tk.StringVar()
+        self.run_cello_var = tk.BooleanVar(value=True)
         self.run_cello_store_var = tk.BooleanVar(value=True)
         self.run_pubmed_var = tk.BooleanVar(value=True)
         self.run_descriptions_var = tk.BooleanVar(value=False)
@@ -63,6 +72,7 @@ class ToolHubApp:
         self.generate_base_dir_var = tk.StringVar(value=str(OUTPUTS_ROOT))
         self.generate_status_var = tk.StringVar(value="Noch keine Ordner erzeugt.")
 
+        self._set_windows_app_id()
         self._load_brand_assets()
         self._build_style()
         self._build_layout()
@@ -70,16 +80,51 @@ class ToolHubApp:
         self.refresh_run_index()
         self.root.after(150, self.flush_logs)
 
+    def _set_windows_app_id(self):
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("CellSearchToolHub")
+        except Exception:
+            pass
+
+    def _load_tk_image(self, path: Path, max_width: int | None = None, max_height: int | None = None):
+        if not path.exists():
+            return None
+
+        if Image is not None and ImageTk is not None:
+            try:
+                image = Image.open(path)
+                if max_width or max_height:
+                    target_width = max_width or image.width
+                    target_height = max_height or image.height
+                    image.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
+                return ImageTk.PhotoImage(image)
+            except Exception:
+                pass
+
+        try:
+            image = tk.PhotoImage(file=str(path))
+            if max_width or max_height:
+                width_limit = max_width or image.width()
+                height_limit = max_height or image.height()
+                width_factor = max(1, (image.width() + width_limit - 1) // width_limit)
+                height_factor = max(1, (image.height() + height_limit - 1) // height_limit)
+                scale_factor = max(width_factor, height_factor)
+                if scale_factor > 1:
+                    image = image.subsample(scale_factor, scale_factor)
+            return image
+        except Exception:
+            return None
+
     def _load_brand_assets(self):
         assets_dir = Path(__file__).resolve().parents[1] / "assets"
         emblem_path = assets_dir / "emblem.png"
 
-        if emblem_path.exists():
+        self.window_icon_image = self._load_tk_image(emblem_path, max_width=256, max_height=256)
+        if self.window_icon_image is not None:
             try:
-                self.window_icon_image = tk.PhotoImage(file=str(emblem_path))
                 self.root.iconphoto(True, self.window_icon_image)
             except Exception:
-                self.window_icon_image = None
+                pass
 
         brand_candidates = [
             assets_dir / "logo.png",
@@ -90,19 +135,9 @@ class ToolHubApp:
             emblem_path,
         ]
         for candidate in brand_candidates:
-            if not candidate.exists():
-                continue
-            try:
-                image = tk.PhotoImage(file=str(candidate))
-                max_width = 520
-                max_height = 120
-                width_factor = max(1, (image.width() + max_width - 1) // max_width)
-                height_factor = max(1, (image.height() + max_height - 1) // max_height)
-                scale_factor = max(width_factor, height_factor)
-                self.header_brand_image = image.subsample(scale_factor, scale_factor) if scale_factor > 1 else image
+            self.header_brand_image = self._load_tk_image(candidate, max_width=520, max_height=120)
+            if self.header_brand_image is not None:
                 break
-            except Exception:
-                continue
 
     def _build_style(self):
         self.root.configure(bg="#efe7d6")
@@ -120,6 +155,55 @@ class ToolHubApp:
         style.configure("Treeview", font=("Consolas", 10), rowheight=24)
         style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10))
 
+    def _create_scrollable_tab(self, parent: ttk.Frame) -> ttk.Frame:
+        container = ttk.Frame(parent)
+        container.pack(fill="both", expand=True)
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(container, background="#efe7d6", highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        content = ttk.Frame(canvas)
+        window_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _sync_scrollregion(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _sync_width(event):
+            canvas.itemconfigure(window_id, width=event.width)
+
+        content.bind("<Configure>", _sync_scrollregion)
+        canvas.bind("<Configure>", _sync_width)
+
+        def _on_mousewheel(event):
+            if event.delta:
+                canvas.yview_scroll(int(-event.delta / 120), "units")
+            elif getattr(event, "num", None) == 4:
+                canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                canvas.yview_scroll(1, "units")
+
+        def _bind_mousewheel(_event=None):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            canvas.bind_all("<Button-4>", _on_mousewheel)
+            canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_mousewheel(_event=None):
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
+        content.bind("<Enter>", _bind_mousewheel)
+        content.bind("<Leave>", _unbind_mousewheel)
+        return content
+
     def _build_layout(self):
         self.main_notebook = ttk.Notebook(self.root)
         self.main_notebook.pack(fill="both", expand=True)
@@ -135,7 +219,9 @@ class ToolHubApp:
         self.main_notebook.add(sop_tab, text="SOP")
         self.main_notebook.add(outputs_tab, text="Outputs")
 
-        main = ttk.Frame(workflow_tab, padding=18)
+        workflow_content = self._create_scrollable_tab(workflow_tab)
+
+        main = ttk.Frame(workflow_content, padding=18)
         main.pack(fill="both", expand=True)
         main.columnconfigure(0, weight=3)
         main.columnconfigure(1, weight=2)
@@ -185,7 +271,11 @@ class ToolHubApp:
         self.results_tree.column("name", width=500, anchor="w")
         self.results_tree.grid(row=2, column=0, sticky="nsew")
         self.results_tree.bind("<<TreeviewSelect>>", lambda _event: self.adopt_selected_result())
-        self.results_tree.bind("<Double-1>", lambda _event: self.adopt_selected_result())
+        self.results_tree.bind("<Double-1>", lambda _event: self.open_selected_cellosaurus_page())
+
+        search_actions = ttk.Frame(search_frame)
+        search_actions.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        ttk.Button(search_actions, text="Cellosaurus Seite öffnen", command=self.open_selected_cellosaurus_page).grid(row=0, column=0, sticky="w")
 
         right_column = ttk.Frame(main)
         right_column.grid(row=1, column=1, sticky="nsew", pady=(16, 10))
@@ -206,12 +296,13 @@ class ToolHubApp:
         options_frame.columnconfigure(0, weight=1)
         options_frame.columnconfigure(1, weight=1)
 
-        ttk.Checkbutton(options_frame, text="Cello+ in CSV speichern", variable=self.run_cello_store_var).grid(row=0, column=0, sticky="w")
-        ttk.Checkbutton(options_frame, text="PubMed citations", variable=self.run_pubmed_var).grid(row=0, column=1, sticky="w")
-        ttk.Checkbutton(options_frame, text="Descriptions/PDFs", variable=self.run_descriptions_var).grid(row=1, column=0, sticky="w", pady=(6, 0))
-        ttk.Checkbutton(options_frame, text="Preis-Suche", variable=self.run_prices_var).grid(row=1, column=1, sticky="w", pady=(6, 0))
-        ttk.Checkbutton(options_frame, text="Zu AFS hinzufuegen", variable=self.run_afs_var).grid(row=2, column=0, sticky="w", pady=(6, 0))
-        ttk.Checkbutton(options_frame, text="Parallel-Processing", variable=self.parallel_var).grid(row=2, column=1, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(options_frame, text="Cello+ ausfuehren", variable=self.run_cello_var).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(options_frame, text="Cello+ in CSV speichern", variable=self.run_cello_store_var).grid(row=0, column=1, sticky="w")
+        ttk.Checkbutton(options_frame, text="PubMed citations", variable=self.run_pubmed_var).grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(options_frame, text="Descriptions/PDFs", variable=self.run_descriptions_var).grid(row=1, column=1, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(options_frame, text="Preis-Suche", variable=self.run_prices_var).grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(options_frame, text="Zu AFS hinzufuegen", variable=self.run_afs_var).grid(row=2, column=1, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(options_frame, text="Parallel-Processing", variable=self.parallel_var).grid(row=3, column=0, sticky="w", pady=(6, 0))
 
         button_row = ttk.Frame(selection_frame)
         button_row.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -221,7 +312,7 @@ class ToolHubApp:
         self.run_button = ttk.Button(button_row, text="Pipeline starten", command=self.start_pipeline)
         self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
-        self.open_run_button = ttk.Button(button_row, text="Letzten Run oeffnen", command=self.open_last_run)
+        self.open_run_button = ttk.Button(button_row, text="Letzten Run öffnen", command=self.open_last_run)
         self.open_run_button.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
         utility_frame = ttk.LabelFrame(right_column, text="3. Utilities", padding=14)
@@ -229,9 +320,9 @@ class ToolHubApp:
         utility_frame.columnconfigure(0, weight=1)
 
         ttk.Button(utility_frame, text="AFS CSV konvertieren", command=self.start_afs_conversion).grid(row=0, column=0, sticky="ew")
-        ttk.Button(utility_frame, text="Output-Ordner oeffnen", command=self.open_outputs_root).grid(row=1, column=0, sticky="ew", pady=(10, 0))
-        ttk.Button(utility_frame, text="Cello+ Master oeffnen", command=self.open_cello_master).grid(row=2, column=0, sticky="ew", pady=(10, 0))
-        ttk.Button(utility_frame, text="AFS Master oeffnen", command=self.open_afs_master).grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        ttk.Button(utility_frame, text="Output-Ordner öffnen", command=self.open_outputs_root).grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        ttk.Button(utility_frame, text="Cello+ Master öffnen", command=self.open_cello_master).grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        ttk.Button(utility_frame, text="AFS Master öffnen", command=self.open_afs_master).grid(row=3, column=0, sticky="ew", pady=(10, 0))
 
         output_hint = ttk.Label(
             utility_frame,
@@ -377,7 +468,7 @@ class ToolHubApp:
         actions.columnconfigure(1, weight=1)
 
         ttk.Button(actions, text="Index neu laden", command=lambda: self.refresh_run_index(force_rebuild=True)).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(actions, text="Index-Datei oeffnen", command=self.open_run_index_file).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        ttk.Button(actions, text="Index-Datei öffnen", command=self.open_run_index_file).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
         run_columns = ("created_at", "selected_name", "selected_cvcl", "status")
         self.run_index_tree = ttk.Treeview(left_frame, columns=run_columns, show="headings")
@@ -402,8 +493,8 @@ class ToolHubApp:
         top_bar.columnconfigure(0, weight=1)
         top_bar.columnconfigure(1, weight=1)
 
-        ttk.Button(top_bar, text="Run-Ordner oeffnen", command=self.open_selected_run_dir).grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        ttk.Button(top_bar, text="Summary oeffnen", command=self.open_selected_summary_file).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        ttk.Button(top_bar, text="Run-Ordner öffnen", command=self.open_selected_run_dir).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(top_bar, text="Summary öffnen", command=self.open_selected_summary_file).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
         self.outputs_notebook = ttk.Notebook(right_frame)
         self.outputs_notebook.grid(row=1, column=0, sticky="nsew")
@@ -537,14 +628,13 @@ class ToolHubApp:
         afs_actions = ttk.Frame(afs_frame)
         afs_actions.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(12, 0))
         ttk.Button(afs_actions, text="AFS konvertieren", command=self.run_csv_afs_conversion).grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(afs_actions, text="AFS Master oeffnen", command=self.open_afs_master).grid(row=0, column=1)
+        ttk.Button(afs_actions, text="AFS Master öffnen", command=self.open_afs_master).grid(row=0, column=1)
 
         csv_check_frame = ttk.Frame(notebook, padding=14)
         csv_check_frame.columnconfigure(0, weight=1)
         csv_check_frame.rowconfigure(1, weight=1)
         ttk.Label(
             csv_check_frame,
-            text="Direkt eingebetteter CSV-Vergleich. Es wird kein zweites Programm mehr geoeffnet.",
         ).grid(row=0, column=0, sticky="w", pady=(0, 12))
         csv_check_canvas = tk.Canvas(csv_check_frame, highlightthickness=0, bg="#efe7d6")
         csv_check_canvas.grid(row=1, column=0, sticky="nsew")
@@ -610,7 +700,7 @@ class ToolHubApp:
         actions = ttk.Frame(frame)
         actions.grid(row=3, column=0, sticky="ew", pady=(10, 0))
         ttk.Button(actions, text="Ordner erzeugen", command=self.run_generate_folders).grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(actions, text="Script-Ordner oeffnen", command=self.open_generated_folders_script_dir).grid(row=0, column=1)
+        ttk.Button(actions, text="Script-Ordner öffnen", command=self.open_generated_folders_script_dir).grid(row=0, column=1)
 
         ttk.Label(frame, textvariable=self.generate_status_var, style="Hint.TLabel").grid(row=4, column=0, sticky="w", pady=(10, 0))
 
@@ -935,8 +1025,17 @@ class ToolHubApp:
             self.selected_cvcl_var.set(values[0])
             self.selected_name_var.set(values[1])
 
+    def open_selected_cellosaurus_page(self):
+        self.adopt_selected_result()
+        selected_cvcl = self.selected_cvcl_var.get().strip()
+        if not selected_cvcl:
+            messagebox.showinfo("Cellosaurus", "Bitte zuerst einen Treffer auswaehlen.")
+            return
+        webbrowser.open(f"https://www.cellosaurus.org/{selected_cvcl}")
+
     def build_options(self) -> PipelineOptions:
         return PipelineOptions(
+            run_cello=self.run_cello_var.get(),
             run_cello_store=self.run_cello_store_var.get(),
             run_pubmed=self.run_pubmed_var.get(),
             run_descriptions=self.run_descriptions_var.get(),
@@ -959,9 +1058,19 @@ class ToolHubApp:
             messagebox.showwarning("Pipeline", "Bitte zuerst einen Treffer auswaehlen.")
             return
 
+        options = self.build_options()
+        if not any((
+            options.run_cello,
+            options.run_pubmed,
+            options.run_descriptions,
+            options.run_prices,
+            options.run_afs,
+        )):
+            messagebox.showwarning("Pipeline", "Bitte mindestens einen Pipeline-Schritt auswaehlen.")
+            return
+
         self.run_button.configure(state="disabled")
         self.search_button.configure(state="disabled")
-        options = self.build_options()
 
         self.enqueue_log(f"[Pipeline] Starte Run fuer {selected_name} ({selected_cvcl})")
         threading.Thread(
@@ -1105,7 +1214,7 @@ class ToolHubApp:
 
     def open_last_run(self):
         if not self.last_run_dir or not self.last_run_dir.exists():
-            messagebox.showinfo("Run", "Es gibt noch keinen fertigen Run zum Oeffnen.")
+            messagebox.showinfo("Run", "Es gibt noch keinen fertigen Run zum öffnen.")
             return
         os.startfile(self.last_run_dir)
 
