@@ -33,6 +33,7 @@ from .paths import (
     CSV_CHECK_SCRIPT,
     GENERATED_FOLDERS_SCRIPT,
     OUTPUTS_ROOT,
+    RESOURCE_ROOT,
     RUN_INDEX_JSON,
     RUNS_ROOT,
     SOP_UI_SCRIPT,
@@ -116,7 +117,7 @@ class ToolHubApp:
             return None
 
     def _load_brand_assets(self):
-        assets_dir = Path(__file__).resolve().parents[1] / "assets"
+        assets_dir = RESOURCE_ROOT / "assets"
         emblem_path = assets_dir / "emblem.png"
 
         self.window_icon_image = self._load_tk_image(emblem_path, max_width=256, max_height=256)

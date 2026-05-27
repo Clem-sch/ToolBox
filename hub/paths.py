@@ -1,9 +1,23 @@
+import sys
 from pathlib import Path
 
 
-APP_ROOT = Path(__file__).resolve().parents[1]
+def _detect_app_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[1]
+
+
+def _detect_resource_root(app_root: Path) -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", app_root)).resolve()
+    return app_root
+
+
+APP_ROOT = _detect_app_root()
+RESOURCE_ROOT = _detect_resource_root(APP_ROOT)
 WORKSPACE_ROOT = APP_ROOT.parent
-BUNDLED_TOOLS_ROOT = APP_ROOT / "bundled_tools"
+BUNDLED_TOOLS_ROOT = RESOURCE_ROOT / "bundled_tools"
 
 OUTPUTS_ROOT = APP_ROOT / "outputs"
 RUNS_ROOT = OUTPUTS_ROOT / "runs"

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import subprocess
 import sys
 import time
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from functools import lru_cache
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -509,52 +512,98 @@ def run_description_download(
 ) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    descriptions_module = load_module("toolhub_descriptions", str(DESCRIPTIONS_SCRIPT))
+    pdf_module = load_module("toolhub_pdf_downloader", str(PDF_DOWNLOADER))
     command = [
-        sys.executable,
+        "embedded",
         str(DESCRIPTIONS_SCRIPT),
         selected_cvcl,
         "--downloader",
         str(PDF_DOWNLOADER),
         "--timeout",
         str(timeout_s),
-        "--python",
-        sys.executable,
     ]
 
-    completed = subprocess.run(
-        command,
-        cwd=output_dir,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    returncode = 0
+    runs: list[dict[str, object]] = []
+    selected_dois: list[str] = []
+    resolved_name = selected_cvcl
+
+    previous_cwd = Path.cwd()
+    pdf_dir = output_dir / selected_cvcl
+    try:
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            os.chdir(output_dir)
+            ac, resolved_name = descriptions_module.resolve_to_cvcl(selected_cvcl)
+            txt = descriptions_module.fetch_cellosaurus_txt(ac)
+            all_dois = descriptions_module.extract_dois(txt)
+            selected_dois = descriptions_module.pick_top_dois(all_dois, max_total=4)
+
+            print(f"\n=== {selected_cvcl} -> {resolved_name} ({ac}) ===")
+            print(f"DOIs gefunden insgesamt: {len(all_dois)}")
+            print(f"DOIs ausgewaehlt (max 4): {len(selected_dois)}")
+            for index, doi in enumerate(selected_dois, start=1):
+                print(f"{index}. {doi}")
+
+            pdf_dir.mkdir(parents=True, exist_ok=True)
+            for index, doi in enumerate(selected_dois, start=1):
+                full_url = f"https://sci-hub.st/{doi}"
+                print(full_url)
+                print(f"\n[{index}/{len(selected_dois)}] embedded downloader {full_url}")
+                ok, download_result = pdf_module.download_pdf_or_embedded(full_url, str(pdf_dir), timeout_s)
+                status = "ok" if ok else "fail"
+                runs.append({
+                    "doi": doi,
+                    "url": full_url,
+                    "status": status,
+                    "result": download_result,
+                })
+                if ok:
+                    print(f"Gespeichert: {download_result}")
+                else:
+                    print(f"Fehler: {download_result}")
+
+            descriptions_module.append_log({
+                "input": selected_cvcl,
+                "cvcl": ac,
+                "resolved_name": resolved_name,
+                "dois": selected_dois,
+                "runs": runs,
+            })
+    except Exception as exc:
+        returncode = 1
+        stderr_buffer.write(f"{type(exc).__name__}: {exc}\n")
+    finally:
+        os.chdir(previous_cwd)
 
     stdout_path = output_dir / "descriptions_stdout.log"
     stderr_path = output_dir / "descriptions_stderr.log"
-    stdout_path.write_text(completed.stdout or "", encoding="utf-8")
-    stderr_path.write_text(completed.stderr or "", encoding="utf-8")
+    stdout_path.write_text(stdout_buffer.getvalue(), encoding="utf-8")
+    stderr_path.write_text(stderr_buffer.getvalue(), encoding="utf-8")
 
-    pdf_dir = output_dir / selected_cvcl
     pdf_files = sorted(str(path) for path in pdf_dir.glob("*.pdf")) if pdf_dir.exists() else []
 
     result = {
         "command": command,
-        "returncode": completed.returncode,
+        "returncode": returncode,
         "stdout_log": str(stdout_path),
         "stderr_log": str(stderr_path),
         "runs_log": str(output_dir / "runs.jsonl"),
         "pdf_dir": str(pdf_dir),
         "pdf_count": len(pdf_files),
         "pdf_files": pdf_files,
+        "dois": selected_dois,
+        "resolved_name": resolved_name,
+        "runs": runs,
     }
     _write_json(output_dir / "descriptions_summary.json", result)
 
-    if completed.returncode != 0:
+    if returncode != 0:
         raise RuntimeError(
             "descriptions2.py ist mit Fehlercode "
-            f"{completed.returncode} beendet. Details stehen in {stderr_path}."
+            f"{returncode} beendet. Details stehen in {stderr_path}."
         )
 
     return result
